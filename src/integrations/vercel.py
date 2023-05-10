@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
-import argparse, requests, sys
-
+import argparse, json, requests, sys
 from utils import env_or_required_arg, get_db_connection
 
-COLLECTION_NAME = 'events_github'
-TOKEN_ENV_NAME = 'GITHUB_TOKEN'
+COLLECTION_NAME = 'events_vercel'
+TOKEN_ENV_NAME = 'VERCEL_TOKEN'
 
-def fetch_events(org, repo, access_token, page=1):
-    endpoint = f'https://api.github.com/repos/{org}/{repo}/events?per_page=100&page={page}'
+def fetch_events(access_token, until=None):
+    endpoint = f'https://api.vercel.com/v6/deployments?limit=100'
+    if until:
+        endpoint += f'&until={until}'
     headers = {'Authorization' : f'Bearer {access_token}'}
     resp = requests.get(endpoint, headers=headers)
     if (resp.status_code == 200):
@@ -16,10 +17,8 @@ def fetch_events(org, repo, access_token, page=1):
         resp.raise_for_status()
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Import events from a GitHub repository')
-    parser.add_argument('organization', type=str, nargs='?', help='the organization that owns the repository')
-    parser.add_argument('repository', type=str, nargs='?', help='the repository to import events from')
-    parser.add_argument('-t', '--token', dest='token', nargs='?', help=f'GitHub API token, or set {TOKEN_ENV_NAME} in env - get a token from https://github.com/settings/tokens', **env_or_required_arg(TOKEN_ENV_NAME))
+    parser = argparse.ArgumentParser(description='Import deployment events from a Vercel account')
+    parser.add_argument('-t', '--token', dest='token', nargs='?', help=f'Vercel API token, or set {TOKEN_ENV_NAME} in env - get a token from https://vercel.com/account/tokens', **env_or_required_arg(TOKEN_ENV_NAME))
     parser.add_argument('-q', '--quiet', dest='quiet', action='store_true', help='suppress console output')
     args = parser.parse_args()
 
@@ -28,16 +27,17 @@ if __name__ == '__main__':
         arango_db = get_db_connection(COLLECTION_NAME)
         collection = arango_db.collection(COLLECTION_NAME)
 
-        page = 1
+        nextPage = None
         import_count = 0
         ignore_count = 0
         errors = []
-        while page > 0:
-            events = fetch_events(args.organization, args.repository, args.token, page=page)
-            if len(events) > 0:
+        while True:
+            vercel_resp = fetch_events(args.token, until=nextPage)
+            if vercel_resp and len(vercel_resp['deployments']) > 0:
+                events = vercel_resp['deployments']
                 # Create the arango key on each event
                 for e in events:
-                    e['_key'] = e['id']
+                    e['_key'] = e['uid']
                 
                 res = collection.import_bulk(events, halt_on_error=False, details=True, on_duplicate='ignore')
                 # res = {'error': False, 'created': 100, 'errors': 0, 'empty': 0, 'updated': 0, 'ignored': 0, 'details': []}
@@ -46,16 +46,21 @@ if __name__ == '__main__':
                 if res['errors'] > 0:
                     errors += res['details']
 
-                page += 1
+                pagination = vercel_resp['pagination']
+                if pagination and 'next' in pagination and pagination['next']:
+                    nextPage = pagination['next']
+                else:
+                    break
             else:
-                page = 0
+                break
+
         if (not args.quiet):
-            print(f'Fetched and stored {import_count} new events and ignored {ignore_count} previously imported events from {args.organization}/{args.repository}')
+            print(f'Fetched and stored {import_count} new events and ignored {ignore_count} previously imported events from Vercel')
             if len(errors) > 0:
                 print('Error(s) occurred during import:')
                 print(errors)
         
     except Exception as ex:
-        print(f'Processing GitHub events failed from {args.organization}/{args.repository}', file=sys.stderr)
+        print(f'Processing Vercel events failed', file=sys.stderr)
         print(ex, file=sys.stderr)
         sys.exit(1)
