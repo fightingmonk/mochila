@@ -49,7 +49,7 @@ RUN apk update && apk upgrade \
 	&& cd / \
     && rm -rf /tmp/opencv-$OPENCV_VERSION \
 	&& mkdir -p /opt/notebook \
-	&& pip3 install --no-cache-dir --upgrade matplotlib jupyter ipywidgets python-arango \
+	&& pip3 install --no-cache-dir --upgrade matplotlib jupyter ipywidgets python-arango solara \
 	&& jupyter nbextension enable --py widgetsnbextension \
 	&& echo "c.NotebookApp.token = ''" > /root/.jupyter/jupyter_notebook_config.py \
 	&& apk del --purge blas-dev build-base clang clang-dev cmake eigen-dev freetype-dev jasper-dev lapack-dev libjpeg-turbo-dev libpng-dev libtbb-dev libwebp-dev linux-headers openblas-dev openexr-dev pkgconf python3-dev tiff-dev wget \
@@ -57,13 +57,17 @@ RUN apk update && apk upgrade \
 	&& find /usr/lib/python3.10/ -type d -name tests -depth -exec rm -rf {} \; \
 	&& find /usr/lib/python3.10/ -type d -name test -depth -exec rm -rf {} \; \
 	&& find /usr/lib/python3.10/ -name __pycache__ -depth -exec rm -rf {} \; \
-    && mkdir -p /opt/data
+    && mkdir -p /opt/data \
+	&& mkdir -p /opt/viewer
 
 COPY src/startup.sh /startup.sh
 COPY src/Student-Sample.ipynb /opt/notebook/Student-Sample.ipynb
+COPY src/viewer/*.py /opt/viewer/
 
 # Arangodb port
 EXPOSE 8529
+# Solara viewer port
+EXPOSE 8765
 # Jupyter port
 EXPOSE 8888
 
