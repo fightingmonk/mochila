@@ -61,7 +61,7 @@ RUN apk update && apk upgrade \
 	&& mkdir -p /opt/viewer
 
 COPY src/startup.sh /startup.sh
-COPY src/Student-Sample.ipynb /opt/notebook/Student-Sample.ipynb
+COPY src/notebook/*.ipynb /opt/notebook/
 COPY src/viewer/*.py /opt/viewer/
 
 # Arangodb port
